@@ -11,28 +11,28 @@ requireAuth();
 $page_title = 'Room Allocation - Sipna Hostel';
 
 // Handle POST actions (Create Allocation, Revoke Allocation)
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     $action = $_POST['action'] ?? '';
 
     // Create Allocation
     if ($action === 'create_allocation') {
-        $student_id = (int)($_POST['student_id'] ?? 0);
+        $student_id = trim($_POST['student_id'] ?? '');
         $room_id = (int)($_POST['room_id'] ?? 0);
         $bed = trim($_POST['bed'] ?? 'Bed A');
         $allocation_date = !empty($_POST['allocation_date']) ? $_POST['allocation_date'] : date('Y-m-d');
 
-        if ($student_id <= 0 || $room_id <= 0) {
+        if (empty($student_id) || $room_id <= 0) {
             setFlashMessage('error', 'Please select both a student and an available room.');
         } else {
             try {
                 // Check if student already has an active allocation
-                $chkStu = $pdo->prepare("SELECT id FROM allocations WHERE student_id = ? AND status = 'Active'");
+                $chkStu = $pdo->prepare("SELECT allocation_id FROM allocations WHERE student_id = ? AND status = 'Active'");
                 $chkStu->execute([$student_id]);
                 if ($chkStu->fetch()) {
                     setFlashMessage('error', 'This student is already allocated a room.');
                 } else {
                     // Check room capacity
-                    $chkRoom = $pdo->prepare("SELECT capacity, (SELECT COUNT(*) FROM allocations WHERE room_id = ? AND status = 'Active') as occupied FROM rooms WHERE id = ?");
+                    $chkRoom = $pdo->prepare("SELECT capacity, (SELECT COUNT(*) FROM allocations WHERE room_id = ? AND status = 'Active') as occupied FROM rooms WHERE room_id = ?");
                     $chkRoom->execute([$room_id, $room_id]);
                     $rInfo = $chkRoom->fetch();
 
@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $alloc_id = (int)($_POST['allocation_id'] ?? 0);
         if ($alloc_id > 0) {
             try {
-                $upd = $pdo->prepare("UPDATE allocations SET status = 'Vacated' WHERE id = ?");
+                $upd = $pdo->prepare("UPDATE allocations SET status = 'Vacated' WHERE allocation_id = ?");
                 $upd->execute([$alloc_id]);
                 setFlashMessage('success', 'Room allocation revoked successfully. Bed is now available.');
             } catch (Exception $e) {
@@ -71,42 +71,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Fetch Unallocated Students
 try {
-    $unallocated_students = $pdo->query("SELECT s.id, s.student_id, s.name, s.department 
+    $unallocated_students = $pdo->query("SELECT s.student_id, s.name, s.department 
         FROM students s 
         WHERE s.status = 'Active' 
-        AND s.id NOT IN (SELECT student_id FROM allocations WHERE status = 'Active')
+        AND s.student_id NOT IN (SELECT student_id FROM allocations WHERE status = 'Active')
         ORDER BY s.name ASC")->fetchAll();
 
     // Fetch Available Rooms (with vacant beds)
     $available_rooms_list = $pdo->query("SELECT 
-        r.id, 
+        r.room_id, 
         r.room_number, 
         r.room_type, 
         r.capacity,
         b.block_name,
-        COALESCE((SELECT COUNT(*) FROM allocations a WHERE a.room_id = r.id AND a.status = 'Active'), 0) as occupied_count
+        COALESCE((SELECT COUNT(*) FROM allocations a WHERE a.room_id = r.room_id AND a.status = 'Active'), 0) as occupied_count
         FROM rooms r 
-        JOIN blocks b ON r.block_id = b.id 
+        JOIN blocks b ON r.block_id = b.block_id 
         WHERE r.status != 'Maintenance'
-        AND (SELECT COUNT(*) FROM allocations a WHERE a.room_id = r.id AND a.status = 'Active') < r.capacity
+        AND (SELECT COUNT(*) FROM allocations a WHERE a.room_id = r.room_id AND a.status = 'Active') < r.capacity
         ORDER BY b.block_name ASC, r.room_number ASC")->fetchAll();
 
     // Fetch All Current Allocations
     $allocations_stmt = $pdo->query("SELECT 
-        a.id as alloc_id,
+        a.allocation_id,
         a.bed,
         a.allocation_date,
         a.status as alloc_status,
-        s.id as student_db_id,
         s.student_id,
         s.name as student_name,
         r.room_number,
         b.block_name
     FROM allocations a
-    JOIN students s ON a.student_id = s.id
-    JOIN rooms r ON a.room_id = r.id
-    JOIN blocks b ON r.block_id = b.id
-    ORDER BY a.id DESC");
+    JOIN students s ON a.student_id = s.student_id
+    JOIN rooms r ON a.room_id = r.room_id
+    JOIN blocks b ON r.block_id = b.block_id
+    ORDER BY a.allocation_id DESC");
     $allocations = $allocations_stmt->fetchAll();
 } catch (Exception $e) {
     die("Database query error: " . $e->getMessage());
@@ -152,7 +151,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                                     <?php if (!empty($unallocated_students)): ?>
                                         <option value="" disabled selected>Select unallocated student...</option>
                                         <?php foreach ($unallocated_students as $stu): ?>
-                                        <option value="<?= $stu['id'] ?>">
+                                        <option value="<?= htmlspecialchars($stu['student_id']) ?>">
                                             <?= htmlspecialchars($stu['name']) ?> (<?= htmlspecialchars($stu['student_id']) ?> - <?= htmlspecialchars($stu['department']) ?>)
                                         </option>
                                         <?php endforeach; ?>
@@ -171,7 +170,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                                         <?php foreach ($available_rooms_list as $rm): 
                                             $free = (int)$rm['capacity'] - (int)$rm['occupied_count'];
                                         ?>
-                                        <option value="<?= $rm['id'] ?>">
+                                        <option value="<?= $rm['room_id'] ?>">
                                             <?= htmlspecialchars($rm['block_name']) ?> - Room <?= htmlspecialchars($rm['room_number']) ?> (<?= $rm['room_type'] ?> - <?= $free ?> Bed<?= $free > 1 ? 's' : '' ?> Free)
                                         </option>
                                         <?php endforeach; ?>
@@ -240,7 +239,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                                                         <?= $stu_initials ?>
                                                     </div>
                                                     <div>
-                                                        <a href="student_profile.php?id=<?= $al['student_db_id'] ?>" class="text-on-surface font-semibold hover:underline">
+                                                        <a href="student_profile.php?id=<?= urlencode($al['student_id']) ?>" class="text-on-surface font-semibold hover:underline">
                                                             <?= htmlspecialchars($al['student_name']) ?>
                                                         </a>
                                                         <div class="text-on-surface-variant text-xs"><?= htmlspecialchars($al['student_id']) ?></div>
@@ -265,7 +264,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                                                 <?php if ($al['alloc_status'] === 'Active'): ?>
                                                 <form method="POST" action="allocations.php" onsubmit="return confirm('Revoke allocation for <?= htmlspecialchars($al['student_name']) ?>? The room bed will become available immediately.');" class="inline">
                                                     <input type="hidden" name="action" value="revoke">
-                                                    <input type="hidden" name="allocation_id" value="<?= $al['alloc_id'] ?>">
+                                                    <input type="hidden" name="allocation_id" value="<?= $al['allocation_id'] ?>">
                                                     <button type="submit" class="p-1 text-on-surface-variant hover:text-error transition-colors cursor-pointer" title="Revoke Allocation">
                                                         <span class="material-symbols-outlined text-[18px]">cancel</span>
                                                     </button>

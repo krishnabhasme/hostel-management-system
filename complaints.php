@@ -11,19 +11,19 @@ requireAuth();
 $page_title = 'Complaint Management - Sipna Hostel';
 
 // Handle POST actions (Create Ticket, Update Status, Delete Ticket)
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     $action = $_POST['action'] ?? '';
 
     // Create New Ticket
     if ($action === 'create_ticket') {
-        $student_id = (int)($_POST['student_id'] ?? 0);
+        $student_id = trim($_POST['student_id'] ?? '');
         $category = $_POST['category'] ?? 'Plumbing';
         $priority = $_POST['priority'] ?? 'Medium';
         $subject = trim($_POST['subject'] ?? '');
         $description = trim($_POST['description'] ?? '');
         $ticket_no = 'CMP-' . rand(1000, 9999);
 
-        if ($student_id <= 0 || empty($subject) || empty($description)) {
+        if (empty($student_id) || empty($subject) || empty($description)) {
             setFlashMessage('error', 'Please select student and provide subject/description.');
         } else {
             try {
@@ -40,13 +40,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Update Complaint Status
     if ($action === 'update_status') {
-        $complaint_id = (int)($_POST['complaint_id'] ?? 0);
+        $ticket_no = trim($_POST['ticket_no'] ?? '');
         $new_status = $_POST['status'] ?? 'Open';
 
-        if ($complaint_id > 0) {
+        if (!empty($ticket_no)) {
             try {
-                $stmt = $pdo->prepare("UPDATE complaints SET status = ? WHERE id = ?");
-                $stmt->execute([$new_status, $complaint_id]);
+                $stmt = $pdo->prepare("UPDATE complaints SET status = ? WHERE ticket_no = ?");
+                $stmt->execute([$new_status, $ticket_no]);
                 setFlashMessage('success', 'Ticket status updated to ' . ucfirst($new_status));
             } catch (Exception $e) {
                 setFlashMessage('error', 'Status update error: ' . $e->getMessage());
@@ -58,11 +58,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Delete Complaint
     if ($action === 'delete') {
-        $complaint_id = (int)($_POST['complaint_id'] ?? 0);
-        if ($complaint_id > 0) {
+        $ticket_no = trim($_POST['ticket_no'] ?? '');
+        if (!empty($ticket_no)) {
             try {
-                $stmt = $pdo->prepare("DELETE FROM complaints WHERE id = ?");
-                $stmt->execute([$complaint_id]);
+                $stmt = $pdo->prepare("DELETE FROM complaints WHERE ticket_no = ?");
+                $stmt->execute([$ticket_no]);
                 setFlashMessage('success', 'Complaint ticket deleted.');
             } catch (Exception $e) {
                 setFlashMessage('error', 'Delete error: ' . $e->getMessage());
@@ -81,7 +81,7 @@ try {
     $resolved_count = (int)$pdo->query("SELECT COUNT(*) FROM complaints WHERE status = 'Resolved'")->fetchColumn();
 
     // Fetch Students for Modal
-    $students_list = $pdo->query("SELECT id, student_id, name FROM students WHERE status = 'Active' ORDER BY name ASC")->fetchAll();
+    $students_list = $pdo->query("SELECT student_id, name FROM students WHERE status = 'Active' ORDER BY name ASC")->fetchAll();
 
     // Category filter parameter
     $category_filter = $_GET['cat'] ?? 'all';
@@ -89,10 +89,9 @@ try {
 
     $query = "SELECT 
         c.*,
-        s.name as student_name,
-        s.student_id as student_code
+        s.name as student_name
     FROM complaints c
-    JOIN students s ON c.student_id = s.id
+    JOIN students s ON c.student_id = s.student_id
     WHERE 1=1";
 
     $params = [];
@@ -106,7 +105,7 @@ try {
         $params = array_merge($params, [$term, $term, $term]);
     }
 
-    $query .= " ORDER BY (c.priority = 'High') DESC, c.id DESC";
+    $query .= " ORDER BY (c.priority = 'High') DESC, c.created_at DESC";
 
     $stmt = $pdo->prepare($query);
     $stmt->execute($params);
@@ -240,22 +239,22 @@ require_once __DIR__ . '/includes/sidebar.php';
                                         <span class="text-[10px] text-secondary"><?= formatDate($c['created_at']) ?></span>
                                     </td>
                                     <td class="px-table-cell-x py-table-cell-y font-body-sm text-body-sm text-on-surface">
-                                        <?= htmlspecialchars($c['student_name']) ?>
-                                        <div class="text-[10px] text-secondary"><?= htmlspecialchars($c['student_code']) ?></div>
+                                        <a href="student_profile.php?id=<?= urlencode($c['student_id']) ?>" class="hover:underline font-medium"><?= htmlspecialchars($c['student_name']) ?></a>
+                                        <div class="text-[10px] text-secondary"><?= htmlspecialchars($c['student_id']) ?></div>
                                     </td>
                                     <td class="px-table-cell-x py-table-cell-y">
                                         <?php if ($c['priority'] === 'High'): ?>
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-error/10 text-error">High</span>
+                                             <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-error/10 text-error">High</span>
                                         <?php elseif ($c['priority'] === 'Medium'): ?>
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-warning/10 text-warning">Medium</span>
+                                             <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-warning/10 text-warning">Medium</span>
                                         <?php else: ?>
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-surface-variant text-on-surface-variant">Low</span>
+                                             <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-surface-variant text-on-surface-variant">Low</span>
                                         <?php endif; ?>
                                     </td>
                                     <td class="px-table-cell-x py-table-cell-y">
                                         <form method="POST" action="complaints.php">
                                             <input type="hidden" name="action" value="update_status">
-                                            <input type="hidden" name="complaint_id" value="<?= $c['id'] ?>">
+                                            <input type="hidden" name="ticket_no" value="<?= htmlspecialchars($c['ticket_no']) ?>">
                                             <select name="status" onchange="this.form.submit()" class="block w-full text-xs font-semibold py-1.5 pl-2 pr-6 border border-table-border rounded bg-surface cursor-pointer <?= $c['status'] === 'Open' ? 'text-error' : ($c['status'] === 'In Progress' ? 'text-warning' : 'text-success') ?>">
                                                 <option value="Open" <?= $c['status'] === 'Open' ? 'selected' : '' ?>>Open</option>
                                                 <option value="In Progress" <?= $c['status'] === 'In Progress' ? 'selected' : '' ?>>In Progress</option>
@@ -266,8 +265,8 @@ require_once __DIR__ . '/includes/sidebar.php';
                                     <td class="px-table-cell-x py-table-cell-y text-right">
                                         <form method="POST" action="complaints.php" onsubmit="return confirm('Delete complaint <?= htmlspecialchars($c['ticket_no']) ?>?');" class="inline">
                                             <input type="hidden" name="action" value="delete">
-                                            <input type="hidden" name="complaint_id" value="<?= $c['id'] ?>">
-                                            <button type="submit" class="p-1 text-on-surface-variant hover:text-error transition-colors" title="Delete">
+                                            <input type="hidden" name="ticket_no" value="<?= htmlspecialchars($c['ticket_no']) ?>">
+                                            <button type="submit" class="p-1 text-on-surface-variant hover:text-error transition-colors cursor-pointer" title="Delete">
                                                 <span class="material-symbols-outlined text-[18px]">delete</span>
                                             </button>
                                         </form>
@@ -304,7 +303,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                     <select name="student_id" required class="w-full px-3 py-2 border border-table-border rounded text-sm bg-surface text-on-surface">
                         <option value="" disabled selected>Select student...</option>
                         <?php foreach ($students_list as $s): ?>
-                        <option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['name']) ?> (<?= htmlspecialchars($s['student_id']) ?>)</option>
+                        <option value="<?= htmlspecialchars($s['student_id']) ?>"><?= htmlspecialchars($s['name']) ?> (<?= htmlspecialchars($s['student_id']) ?>)</option>
                         <?php endforeach; ?>
                     </select>
                 </div>

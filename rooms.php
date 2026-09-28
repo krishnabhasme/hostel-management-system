@@ -2,6 +2,7 @@
 /**
  * Room Management - Sipna Hostel Management System
  * Preserves 100% of Stitch Room Management UI with Live Database Coordination
+ * Aligned with ER Diagram: ROOMS (room_id PK, block_id FK -> BLOCKS.block_id)
  */
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/functions.php';
@@ -11,7 +12,7 @@ requireAuth();
 $page_title = 'Room Management - Sipna Hostel';
 
 // Handle POST actions (Create Room, Update Status, Delete Room)
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     $action = $_POST['action'] ?? '';
 
     // Create Room
@@ -44,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($room_id > 0) {
             try {
-                $stmt = $pdo->prepare("UPDATE rooms SET status = ? WHERE id = ?");
+                $stmt = $pdo->prepare("UPDATE rooms SET status = ? WHERE room_id = ?");
                 $stmt->execute([$new_status, $room_id]);
                 setFlashMessage('success', 'Room status updated successfully.');
             } catch (Exception $e) {
@@ -62,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 // Delete allocations first then room
                 $pdo->prepare("DELETE FROM allocations WHERE room_id = ?")->execute([$room_id]);
-                $stmt = $pdo->prepare("DELETE FROM rooms WHERE id = ?");
+                $stmt = $pdo->prepare("DELETE FROM rooms WHERE room_id = ?");
                 $stmt->execute([$room_id]);
                 setFlashMessage('success', 'Room deleted successfully.');
             } catch (Exception $e) {
@@ -76,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Fetch Blocks for Filter and Modal
 try {
-    $blocks = $pdo->query("SELECT id, block_name, type FROM blocks ORDER BY block_name ASC")->fetchAll();
+    $blocks = $pdo->query("SELECT block_id, block_name, type FROM blocks ORDER BY block_name ASC")->fetchAll();
 } catch (Exception $e) {
     $blocks = [];
 }
@@ -89,9 +90,9 @@ $query = "SELECT
     r.*,
     b.block_name,
     b.type as block_type,
-    COALESCE((SELECT COUNT(*) FROM allocations a WHERE a.room_id = r.id AND a.status = 'Active'), 0) as occupied_beds
+    COALESCE((SELECT COUNT(*) FROM allocations a WHERE a.room_id = r.room_id AND a.status = 'Active'), 0) as occupied_beds
 FROM rooms r
-JOIN blocks b ON r.block_id = b.id
+JOIN blocks b ON r.block_id = b.block_id
 WHERE 1=1";
 
 $params = [];
@@ -103,9 +104,9 @@ if (!empty($status_filter) && $status_filter !== 'all') {
     if ($status_filter === 'Maintenance') {
         $query .= " AND r.status = 'Maintenance'";
     } elseif ($status_filter === 'Full') {
-        $query .= " AND r.status != 'Maintenance' AND (SELECT COUNT(*) FROM allocations a WHERE a.room_id = r.id AND a.status = 'Active') >= r.capacity";
+        $query .= " AND r.status != 'Maintenance' AND (SELECT COUNT(*) FROM allocations a WHERE a.room_id = r.room_id AND a.status = 'Active') >= r.capacity";
     } elseif ($status_filter === 'Available') {
-        $query .= " AND r.status != 'Maintenance' AND (SELECT COUNT(*) FROM allocations a WHERE a.room_id = r.id AND a.status = 'Active') < r.capacity";
+        $query .= " AND r.status != 'Maintenance' AND (SELECT COUNT(*) FROM allocations a WHERE a.room_id = r.room_id AND a.status = 'Active') < r.capacity";
     }
 }
 
@@ -154,7 +155,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                         <select name="block" class="w-full bg-surface border border-table-border rounded px-3 py-2 font-body-main text-body-main text-on-surface focus:outline-none focus:border-primary">
                             <option value="all">All Blocks</option>
                             <?php foreach ($blocks as $b): ?>
-                            <option value="<?= $b['id'] ?>" <?= $block_filter == $b['id'] ? 'selected' : '' ?>>
+                            <option value="<?= $b['block_id'] ?>" <?= $block_filter == $b['block_id'] ? 'selected' : '' ?>>
                                 <?= htmlspecialchars($b['block_name']) ?> (<?= htmlspecialchars($b['type']) ?>)
                             </option>
                             <?php endforeach; ?>
@@ -241,7 +242,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                                         <div class="flex items-center justify-end gap-1">
                                             <form method="POST" action="rooms.php" class="inline">
                                                 <input type="hidden" name="action" value="update_status">
-                                                <input type="hidden" name="room_id" value="<?= $r['id'] ?>">
+                                                <input type="hidden" name="room_id" value="<?= $r['room_id'] ?>">
                                                 <input type="hidden" name="status" value="<?= $is_maintenance ? 'Available' : 'Maintenance' ?>">
                                                 <button type="submit" class="p-1 text-on-surface-variant hover:text-warning cursor-pointer" title="<?= $is_maintenance ? 'Mark Available' : 'Mark Maintenance' ?>">
                                                     <span class="material-symbols-outlined text-[18px]">build</span>
@@ -249,7 +250,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                                             </form>
                                             <form method="POST" action="rooms.php" onsubmit="return confirm('Delete room <?= htmlspecialchars($r['room_number']) ?>? All associated allocations will be removed.');" class="inline">
                                                 <input type="hidden" name="action" value="delete">
-                                                <input type="hidden" name="room_id" value="<?= $r['id'] ?>">
+                                                <input type="hidden" name="room_id" value="<?= $r['room_id'] ?>">
                                                 <button type="submit" class="p-1 text-on-surface-variant hover:text-error cursor-pointer" title="Delete Room">
                                                     <span class="material-symbols-outlined text-[18px]">delete</span>
                                                 </button>
@@ -287,7 +288,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                     <label class="block text-xs font-bold text-on-surface-variant mb-1">Hostel Block *</label>
                     <select name="block_id" required class="w-full px-3 py-2 border border-table-border rounded text-sm bg-surface text-on-surface">
                         <?php foreach ($blocks as $b): ?>
-                        <option value="<?= $b['id'] ?>"><?= htmlspecialchars($b['block_name']) ?> (<?= htmlspecialchars($b['type']) ?>)</option>
+                        <option value="<?= $b['block_id'] ?>"><?= htmlspecialchars($b['block_name']) ?> (<?= htmlspecialchars($b['type']) ?>)</option>
                         <?php endforeach; ?>
                     </select>
                 </div>

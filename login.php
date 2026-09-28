@@ -22,12 +22,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Please enter both username and password.';
     } else {
         try {
-            $stmt = $pdo->prepare("SELECT * FROM admin WHERE username = ? AND password = ? LIMIT 1");
-            $stmt->execute([$username, $password]);
+            $stmt = $pdo->prepare("SELECT * FROM admin WHERE username = ? LIMIT 1");
+            $stmt->execute([$username]);
             $admin = $stmt->fetch();
 
-            if ($admin) {
-                $_SESSION['admin_id'] = $admin['id'];
+            if ($admin && ($admin['password'] === $password || password_verify($password, $admin['password']))) {
+                $_SESSION['admin_id'] = $admin['username'];
                 $_SESSION['admin_username'] = $admin['username'];
                 $_SESSION['admin_name'] = $admin['full_name'];
 

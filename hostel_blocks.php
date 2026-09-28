@@ -2,6 +2,7 @@
 /**
  * Hostel Block Management - Sipna Hostel Management System
  * Preserves 100% of Stitch Hostel Block Management UI with Live Database Coordination
+ * Aligned with ER Diagram: BLOCKS (block_id PK) -> ROOMS (room_id PK, block_id FK)
  */
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/functions.php';
@@ -11,7 +12,7 @@ requireAuth();
 $page_title = 'Hostel Blocks - Sipna Hostel';
 
 // Handle POST actions (Create Block, Delete Block)
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'create') {
@@ -40,9 +41,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($block_id > 0) {
             try {
                 // Delete associated allocations, rooms, and block
-                $pdo->prepare("DELETE FROM allocations WHERE room_id IN (SELECT id FROM rooms WHERE block_id = ?)")->execute([$block_id]);
+                $pdo->prepare("DELETE FROM allocations WHERE room_id IN (SELECT room_id FROM rooms WHERE block_id = ?)")->execute([$block_id]);
                 $pdo->prepare("DELETE FROM rooms WHERE block_id = ?")->execute([$block_id]);
-                $stmt = $pdo->prepare("DELETE FROM blocks WHERE id = ?");
+                $stmt = $pdo->prepare("DELETE FROM blocks WHERE block_id = ?");
                 $stmt->execute([$block_id]);
                 setFlashMessage('success', 'Hostel block and associated rooms deleted successfully.');
             } catch (Exception $e) {
@@ -58,13 +59,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 try {
     $stmt = $pdo->query("SELECT 
         b.*,
-        COUNT(DISTINCT r.id) as total_rooms,
+        COUNT(DISTINCT r.room_id) as total_rooms,
         COALESCE(SUM(r.capacity), 0) as total_capacity,
-        COALESCE((SELECT COUNT(*) FROM allocations a JOIN rooms r2 ON a.room_id = r2.id WHERE r2.block_id = b.id AND a.status = 'Active'), 0) as occupied_beds,
-        COALESCE((SELECT COUNT(DISTINCT r3.id) FROM rooms r3 WHERE r3.block_id = b.id AND r3.status != 'Maintenance' AND (SELECT COUNT(*) FROM allocations a2 WHERE a2.room_id = r3.id AND a2.status = 'Active') < r3.capacity), 0) as available_rooms
+        COALESCE((SELECT COUNT(*) FROM allocations a JOIN rooms r2 ON a.room_id = r2.room_id WHERE r2.block_id = b.block_id AND a.status = 'Active'), 0) as occupied_beds,
+        COALESCE((SELECT COUNT(DISTINCT r3.room_id) FROM rooms r3 WHERE r3.block_id = b.block_id AND r3.status != 'Maintenance' AND (SELECT COUNT(*) FROM allocations a2 WHERE a2.room_id = r3.room_id AND a2.status = 'Active') < r3.capacity), 0) as available_rooms
     FROM blocks b
-    LEFT JOIN rooms r ON b.id = r.block_id
-    GROUP BY b.id
+    LEFT JOIN rooms r ON b.block_id = r.block_id
+    GROUP BY b.block_id
     ORDER BY b.block_name ASC");
     $blocks = $stmt->fetchAll();
 } catch (Exception $e) {
@@ -112,7 +113,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                         </div>
                         <form method="POST" action="hostel_blocks.php" onsubmit="return confirm('Delete <?= htmlspecialchars($block['block_name']) ?>? All associated rooms and allocations will be removed.');">
                             <input type="hidden" name="action" value="delete">
-                            <input type="hidden" name="block_id" value="<?= $block['id'] ?>">
+                            <input type="hidden" name="block_id" value="<?= $block['block_id'] ?>">
                             <button type="submit" class="text-on-surface-variant hover:text-error transition-colors p-1 cursor-pointer" title="Delete Block">
                                 <span class="material-symbols-outlined text-[18px]">delete</span>
                             </button>

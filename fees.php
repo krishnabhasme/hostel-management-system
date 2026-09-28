@@ -11,19 +11,19 @@ requireAuth();
 $page_title = 'Fee Management - Sipna Hostel';
 
 // Handle POST actions (Record Payment, Delete Fee)
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     $action = $_POST['action'] ?? '';
 
     // Record New Fee Payment
     if ($action === 'create_payment') {
-        $student_id = (int)($_POST['student_id'] ?? 0);
+        $student_id = trim($_POST['student_id'] ?? '');
         $amount = (float)($_POST['amount'] ?? 0);
         $payment_date = !empty($_POST['payment_date']) ? $_POST['payment_date'] : date('Y-m-d');
         $payment_method = $_POST['payment_method'] ?? 'UPI';
         $status = $_POST['status'] ?? 'Paid';
         $receipt_no = 'RCP-24-' . str_pad((string)rand(10, 999), 3, '0', STR_PAD_LEFT);
 
-        if ($student_id <= 0 || $amount <= 0) {
+        if (empty($student_id) || $amount <= 0) {
             setFlashMessage('error', 'Please select a student and enter a valid fee amount.');
         } else {
             try {
@@ -40,11 +40,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Delete Fee Record
     if ($action === 'delete') {
-        $fee_id = (int)($_POST['fee_id'] ?? 0);
-        if ($fee_id > 0) {
+        $receipt_no = trim($_POST['receipt_no'] ?? '');
+        if (!empty($receipt_no)) {
             try {
-                $stmt = $pdo->prepare("DELETE FROM fees WHERE id = ?");
-                $stmt->execute([$fee_id]);
+                $stmt = $pdo->prepare("DELETE FROM fees WHERE receipt_no = ?");
+                $stmt->execute([$receipt_no]);
                 setFlashMessage('success', 'Fee payment transaction deleted.');
             } catch (Exception $e) {
                 setFlashMessage('error', 'Delete error: ' . $e->getMessage());
@@ -63,17 +63,16 @@ try {
     $overdue_count = (int)$pdo->query("SELECT COUNT(*) FROM fees WHERE status = 'Overdue'")->fetchColumn();
 
     // Fetch Students for Payment Modal
-    $students_list = $pdo->query("SELECT id, student_id, name, department FROM students WHERE status = 'Active' ORDER BY name ASC")->fetchAll();
+    $students_list = $pdo->query("SELECT student_id, name, department FROM students WHERE status = 'Active' ORDER BY name ASC")->fetchAll();
 
     // Fetch Transactions with Student details
     $transactions_stmt = $pdo->query("SELECT 
         f.*,
         s.name as student_name,
-        s.student_id as student_code,
         s.department
     FROM fees f
-    JOIN students s ON f.student_id = s.id
-    ORDER BY f.payment_date DESC, f.id DESC");
+    JOIN students s ON f.student_id = s.student_id
+    ORDER BY f.payment_date DESC, f.receipt_no DESC");
     $transactions = $transactions_stmt->fetchAll();
 
 } catch (Exception $e) {
@@ -194,12 +193,12 @@ require_once __DIR__ . '/includes/sidebar.php';
                                     <td class="px-table-cell-x py-table-cell-y">
                                         <div class="flex items-center gap-2">
                                             <div class="w-6 h-6 rounded bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center"><?= $initials ?></div>
-                                            <a href="student_profile.php?id=<?= $tx['student_id'] ?>" class="hover:underline font-medium">
+                                            <a href="student_profile.php?id=<?= urlencode($tx['student_id']) ?>" class="hover:underline font-medium">
                                                 <?= htmlspecialchars($tx['student_name']) ?>
                                             </a>
                                         </div>
                                     </td>
-                                    <td class="px-table-cell-x py-table-cell-y text-on-surface-variant"><?= htmlspecialchars($tx['student_code']) ?></td>
+                                    <td class="px-table-cell-x py-table-cell-y text-on-surface-variant"><?= htmlspecialchars($tx['student_id']) ?></td>
                                     <td class="px-table-cell-x py-table-cell-y font-semibold text-on-surface"><?= formatCurrency($tx['amount']) ?></td>
                                     <td class="px-table-cell-x py-table-cell-y text-on-surface-variant"><?= formatDate($tx['payment_date']) ?></td>
                                     <td class="px-table-cell-x py-table-cell-y"><?= htmlspecialchars($tx['payment_method']) ?></td>
@@ -219,7 +218,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                                             </button>
                                             <form method="POST" action="fees.php" onsubmit="return confirm('Delete transaction <?= htmlspecialchars($tx['receipt_no']) ?>?');" class="inline">
                                                 <input type="hidden" name="action" value="delete">
-                                                <input type="hidden" name="fee_id" value="<?= $tx['id'] ?>">
+                                                <input type="hidden" name="receipt_no" value="<?= htmlspecialchars($tx['receipt_no']) ?>">
                                                 <button type="submit" class="p-1 text-on-surface-variant hover:text-error transition-colors" title="Delete">
                                                     <span class="material-symbols-outlined text-[18px]">delete</span>
                                                 </button>
@@ -262,7 +261,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                         <?php if (!empty($students_list)): ?>
                             <option value="" disabled selected>Select student...</option>
                             <?php foreach ($students_list as $s): ?>
-                            <option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['name']) ?> (<?= htmlspecialchars($s['student_id']) ?> - <?= htmlspecialchars($s['department']) ?>)</option>
+                            <option value="<?= htmlspecialchars($s['student_id']) ?>"><?= htmlspecialchars($s['name']) ?> (<?= htmlspecialchars($s['student_id']) ?> - <?= htmlspecialchars($s['department']) ?>)</option>
                             <?php endforeach; ?>
                         <?php else: ?>
                             <option value="" disabled selected>No students found. Register student first.</option>
@@ -369,7 +368,7 @@ function viewReceipt(tx) {
     document.getElementById('rcpt_no').textContent = tx.receipt_no;
     document.getElementById('rcpt_date').textContent = tx.payment_date;
     document.getElementById('rcpt_student').textContent = tx.student_name;
-    document.getElementById('rcpt_id').textContent = tx.student_code;
+    document.getElementById('rcpt_id').textContent = tx.student_id;
     document.getElementById('rcpt_method').textContent = tx.payment_method;
     document.getElementById('rcpt_status').textContent = tx.status.toUpperCase();
     document.getElementById('rcpt_amount').textContent = '₹ ' + parseFloat(tx.amount).toLocaleString('en-IN');

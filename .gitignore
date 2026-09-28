@@ -1,0 +1,30 @@
+# Operating System Files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Editor & IDE Directories
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment & Credentials
+.env
+.env.*
+*.local
+config.local.php
+
+# Logs & Temporary Files
+*.log
+*.tmp
+logs/
+temp/
+tmp/
+scratch/
+
+# Stitch raw export (optional raw design mockups)
+stitch_export/

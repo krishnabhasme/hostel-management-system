@@ -8,15 +8,15 @@ require_once __DIR__ . '/includes/functions.php';
 
 requireAuth();
 
-$student_id_param = (int)($_GET['id'] ?? 0);
+$student_id_param = trim($_GET['id'] ?? '');
 
-if ($student_id_param <= 0) {
+if (empty($student_id_param)) {
     header("Location: students.php");
     exit;
 }
 
 // Handle Profile Updates & Discharge
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'update_profile') {
@@ -33,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $pdo->prepare("UPDATE students SET 
                 name = ?, contact = ?, email = ?, department = ?, 
                 year = ?, address = ?, guardian_name = ?, guardian_contact = ?
-                WHERE id = ?");
+                WHERE student_id = ?");
             $stmt->execute([
                 $name, $contact, $email, $department,
                 $year, $address, $guardian_name, $guardian_contact,
@@ -44,30 +44,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $e) {
             setFlashMessage('error', 'Update failed: ' . $e->getMessage());
         }
-        header("Location: student_profile.php?id=" . $student_id_param);
+        header("Location: student_profile.php?id=" . urlencode($student_id_param));
         exit;
     }
 
     if ($action === 'discharge') {
         try {
-            $updAlloc = $pdo->prepare("UPDATE allocations SET status = 'Vacated' WHERE student_id = ?");
+            $updAlloc = $pdo->prepare("UPDATE allocations SET status = 'Vacated' WHERE student_id = ? AND status = 'Active'");
             $updAlloc->execute([$student_id_param]);
 
-            $updStu = $pdo->prepare("UPDATE students SET status = 'Inactive' WHERE id = ?");
+            $updStu = $pdo->prepare("UPDATE students SET status = 'Inactive' WHERE student_id = ?");
             $updStu->execute([$student_id_param]);
 
             setFlashMessage('success', 'Student has been discharged and room vacated.');
         } catch (Exception $e) {
             setFlashMessage('error', 'Discharge failed: ' . $e->getMessage());
         }
-        header("Location: student_profile.php?id=" . $student_id_param);
+        header("Location: student_profile.php?id=" . urlencode($student_id_param));
         exit;
     }
 }
 
 // Fetch Student details
 try {
-    $stmt = $pdo->prepare("SELECT * FROM students WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT * FROM students WHERE student_id = ?");
     $stmt->execute([$student_id_param]);
     $student = $stmt->fetch();
 
@@ -88,8 +88,8 @@ try {
         b.block_name,
         b.type as block_type
     FROM allocations a
-    JOIN rooms r ON a.room_id = r.id
-    JOIN blocks b ON r.block_id = b.id
+    JOIN rooms r ON a.room_id = r.room_id
+    JOIN blocks b ON r.block_id = b.block_id
     WHERE a.student_id = ? AND a.status = 'Active'
     LIMIT 1");
     $stmt->execute([$student_id_param]);
@@ -101,7 +101,7 @@ try {
     $fee_history = $stmt->fetchAll();
 
     // Complaints
-    $stmt = $pdo->prepare("SELECT * FROM complaints WHERE student_id = ? ORDER BY id DESC");
+    $stmt = $pdo->prepare("SELECT * FROM complaints WHERE student_id = ? ORDER BY created_at DESC");
     $stmt->execute([$student_id_param]);
     $complaints = $stmt->fetchAll();
 
@@ -173,7 +173,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                         EDIT DETAILS
                     </button>
                     <?php if ($student['status'] === 'Active' && $allocation): ?>
-                    <form method="POST" action="student_profile.php?id=<?= $student['id'] ?>" onsubmit="return confirm('Discharge student and vacate room?');">
+                    <form method="POST" action="student_profile.php?id=<?= urlencode($student['student_id']) ?>" onsubmit="return confirm('Discharge student and vacate room?');">
                         <input type="hidden" name="action" value="discharge">
                         <button type="submit" class="w-full px-4 py-2 bg-surface text-error border border-error/50 rounded font-label-caps text-label-caps hover:bg-error/5 transition-colors flex items-center justify-center gap-2 cursor-pointer">
                             <span class="material-symbols-outlined text-[18px]">output</span>
@@ -355,7 +355,7 @@ require_once __DIR__ . '/includes/sidebar.php';
             </button>
         </div>
         <div class="p-6 overflow-y-auto">
-            <form action="student_profile.php?id=<?= $student['id'] ?>" method="POST" class="space-y-4">
+            <form action="student_profile.php?id=<?= urlencode($student['student_id']) ?>" method="POST" class="space-y-4">
                 <input type="hidden" name="action" value="update_profile">
                 <div class="grid grid-cols-2 gap-4">
                     <div>

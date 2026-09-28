@@ -19,8 +19,8 @@ try {
     $total_beds = (int)$pdo->query("SELECT COALESCE(SUM(capacity), 0) FROM rooms")->fetchColumn();
     $occupied_beds = (int)$pdo->query("SELECT COUNT(*) FROM allocations WHERE status = 'Active'")->fetchColumn();
     $available_beds = max(0, $total_beds - $occupied_beds);
-    $available_rooms = (int)$pdo->query("SELECT COUNT(*) FROM rooms r WHERE r.status != 'Maintenance' AND (SELECT COUNT(*) FROM allocations a WHERE a.room_id = r.id AND a.status = 'Active') < r.capacity")->fetchColumn();
-    $occupied_rooms = (int)$pdo->query("SELECT COUNT(*) FROM rooms r WHERE (SELECT COUNT(*) FROM allocations a WHERE a.room_id = r.id AND a.status = 'Active') >= r.capacity")->fetchColumn();
+    $available_rooms = (int)$pdo->query("SELECT COUNT(*) FROM rooms r WHERE r.status != 'Maintenance' AND (SELECT COUNT(*) FROM allocations a WHERE a.room_id = r.room_id AND a.status = 'Active') < r.capacity")->fetchColumn();
+    $occupied_rooms = (int)$pdo->query("SELECT COUNT(*) FROM rooms r WHERE (SELECT COUNT(*) FROM allocations a WHERE a.room_id = r.room_id AND a.status = 'Active') >= r.capacity")->fetchColumn();
     $occupancy_pct = $total_beds > 0 ? round(($occupied_beds / $total_beds) * 100) : 0;
 
     // 3. Pending Fees
@@ -32,7 +32,6 @@ try {
 
     // 5. Recent Student Registrations
     $stmt = $pdo->query("SELECT 
-        s.id,
         s.student_id,
         s.name,
         s.department,
@@ -42,14 +41,14 @@ try {
         b.block_name,
         a.status as allocation_status
     FROM students s
-    LEFT JOIN allocations a ON s.id = a.student_id AND a.status = 'Active'
-    LEFT JOIN rooms r ON a.room_id = r.id
-    LEFT JOIN blocks b ON r.block_id = b.id
-    ORDER BY s.id DESC LIMIT 5");
+    LEFT JOIN allocations a ON s.student_id = a.student_id AND a.status = 'Active'
+    LEFT JOIN rooms r ON a.room_id = r.room_id
+    LEFT JOIN blocks b ON r.block_id = b.block_id
+    ORDER BY s.student_id DESC LIMIT 5");
     $recent_students = $stmt->fetchAll();
 
     // 6. Recent Complaints Feed
-    $recent_complaints = $pdo->query("SELECT c.*, s.name as student_name FROM complaints c JOIN students s ON c.student_id = s.id ORDER BY c.id DESC LIMIT 4")->fetchAll();
+    $recent_complaints = $pdo->query("SELECT c.*, s.name as student_name FROM complaints c JOIN students s ON c.student_id = s.student_id ORDER BY c.created_at DESC LIMIT 4")->fetchAll();
 
     // Monthly Fee Collection Map
     $monthly_collections = [
@@ -227,7 +226,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                                                 <?= $initials ?>
                                             </div>
                                             <div>
-                                                <a href="student_profile.php?id=<?= $stu['id'] ?>" class="text-on-surface font-medium hover:text-primary transition-colors">
+                                                <a href="student_profile.php?id=<?= urlencode($stu['student_id']) ?>" class="text-on-surface font-medium hover:text-primary transition-colors">
                                                     <?= htmlspecialchars($stu['name']) ?>
                                                 </a>
                                                 <div class="text-[11px] text-on-surface-variant font-mono"><?= htmlspecialchars($stu['student_id']) ?></div>
@@ -254,7 +253,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                                         <?php endif; ?>
                                     </td>
                                     <td class="px-table-cell-x py-table-cell-y text-right">
-                                        <a href="student_profile.php?id=<?= $stu['id'] ?>" class="text-secondary hover:text-primary p-1 inline-block" title="View Profile">
+                                        <a href="student_profile.php?id=<?= urlencode($stu['student_id']) ?>" class="text-secondary hover:text-primary p-1 inline-block" title="View Profile">
                                             <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
                                         </a>
                                     </td>

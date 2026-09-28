@@ -2,6 +2,7 @@
 /**
  * Student Management - Sipna Hostel Management System
  * Preserves 100% of Stitch UI layout, table, and modal with Live Database Coordination
+ * Aligned with ER Diagram: STUDENTS (student_id PK)
  */
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/functions.php';
@@ -11,7 +12,7 @@ requireAuth();
 $page_title = 'Students Directory - Sipna Hostel';
 
 // Handle POST actions (Create Student, Delete Student)
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     $action = $_POST['action'] ?? '';
 
     // Create New Student
@@ -43,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $department, $year, $address, $guardian_name, $guardian_contact
                 ]);
 
-                setFlashMessage('success', "Student {$name} registered successfully!");
+                setFlashMessage('success', "Student {$name} ({$student_id}) registered successfully!");
             } catch (Exception $e) {
                 setFlashMessage('error', 'Failed to register student: ' . $e->getMessage());
             }
@@ -54,15 +55,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Delete Student
     if ($action === 'delete') {
-        $id = (int)($_POST['student_id_val'] ?? 0);
-        if ($id > 0) {
+        $student_id = trim($_POST['student_id_val'] ?? '');
+        if (!empty($student_id)) {
             try {
                 // Delete associated allocations, fees, and complaints first
-                $pdo->prepare("DELETE FROM allocations WHERE student_id = ?")->execute([$id]);
-                $pdo->prepare("DELETE FROM fees WHERE student_id = ?")->execute([$id]);
-                $pdo->prepare("DELETE FROM complaints WHERE student_id = ?")->execute([$id]);
-                $del = $pdo->prepare("DELETE FROM students WHERE id = ?");
-                $del->execute([$id]);
+                $pdo->prepare("DELETE FROM allocations WHERE student_id = ?")->execute([$student_id]);
+                $pdo->prepare("DELETE FROM fees WHERE student_id = ?")->execute([$student_id]);
+                $pdo->prepare("DELETE FROM complaints WHERE student_id = ?")->execute([$student_id]);
+                $del = $pdo->prepare("DELETE FROM students WHERE student_id = ?");
+                $del->execute([$student_id]);
                 setFlashMessage('success', 'Student record and associated room allocations removed successfully.');
             } catch (Exception $e) {
                 setFlashMessage('error', 'Could not delete student: ' . $e->getMessage());
@@ -83,9 +84,9 @@ $query = "SELECT
     a.bed,
     a.status as alloc_status
 FROM students s
-LEFT JOIN allocations a ON s.id = a.student_id AND a.status = 'Active'
-LEFT JOIN rooms r ON a.room_id = r.id
-LEFT JOIN blocks b ON r.block_id = b.id
+LEFT JOIN allocations a ON s.student_id = a.student_id AND a.status = 'Active'
+LEFT JOIN rooms r ON a.room_id = r.room_id
+LEFT JOIN blocks b ON r.block_id = b.block_id
 WHERE 1=1";
 
 $params = [];
@@ -95,7 +96,7 @@ if (!empty($search)) {
     $params = [$term, $term, $term, $term];
 }
 
-$query .= " ORDER BY s.id DESC";
+$query .= " ORDER BY s.student_id DESC";
 
 try {
     $stmt = $pdo->prepare($query);
@@ -160,7 +161,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                             ?>
                             <tr class="hover:bg-surface-container-highest/30 transition-colors group">
                                 <td class="px-table-cell-x py-table-cell-y font-table-data text-table-data text-primary font-semibold">
-                                    <a href="student_profile.php?id=<?= $stu['id'] ?>" class="hover:underline">
+                                    <a href="student_profile.php?id=<?= urlencode($stu['student_id']) ?>" class="hover:underline">
                                         <?= htmlspecialchars($stu['student_id']) ?>
                                     </a>
                                 </td>
@@ -197,12 +198,12 @@ require_once __DIR__ . '/includes/sidebar.php';
                                 </td>
                                 <td class="px-table-cell-x py-table-cell-y text-right">
                                     <div class="flex items-center justify-end gap-2">
-                                        <a href="student_profile.php?id=<?= $stu['id'] ?>" class="text-secondary hover:text-primary transition-colors p-1" title="View Profile">
+                                        <a href="student_profile.php?id=<?= urlencode($stu['student_id']) ?>" class="text-secondary hover:text-primary transition-colors p-1" title="View Profile">
                                             <span class="material-symbols-outlined text-[18px]">visibility</span>
                                         </a>
                                         <form method="POST" action="students.php" onsubmit="return confirm('Are you sure you want to delete student <?= htmlspecialchars($stu['name']) ?>? All room allocations and fees will be removed.');" class="inline">
                                             <input type="hidden" name="action" value="delete">
-                                            <input type="hidden" name="student_id_val" value="<?= $stu['id'] ?>">
+                                            <input type="hidden" name="student_id_val" value="<?= htmlspecialchars($stu['student_id']) ?>">
                                             <button type="submit" class="text-secondary hover:text-error transition-colors p-1 cursor-pointer" title="Delete Student">
                                                 <span class="material-symbols-outlined text-[18px]">delete</span>
                                             </button>
@@ -252,7 +253,7 @@ require_once __DIR__ . '/includes/sidebar.php';
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-xs font-bold text-on-surface-variant mb-1">Student ID (Roll No) *</label>
-                        <input name="student_id" required placeholder="e.g. STU-2024-01" class="w-full px-3 py-2 border border-outline-variant rounded text-sm text-on-surface">
+                        <input name="student_id" required placeholder="e.g. STU-2024-001" class="w-full px-3 py-2 border border-outline-variant rounded text-sm text-on-surface">
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-on-surface-variant mb-1">Full Name *</label>
